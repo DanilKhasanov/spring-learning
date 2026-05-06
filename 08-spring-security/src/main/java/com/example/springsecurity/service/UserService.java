@@ -6,6 +6,7 @@ import com.example.springsecurity.entity.User;
 import com.example.springsecurity.exception.RoleNotFoundException;
 import com.example.springsecurity.exception.UserAlreadyExistsException;
 import com.example.springsecurity.exception.UserNotFoundException;
+import com.example.springsecurity.mapper.UserMapper;
 import com.example.springsecurity.model.ApiModels.AuthResponse;
 import com.example.springsecurity.model.ApiModels.UserCreateRequest;
 import com.example.springsecurity.model.ApiModels.UserDto;
@@ -15,8 +16,6 @@ import com.example.springsecurity.repository.RoleRepository;
 import com.example.springsecurity.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,15 +28,18 @@ public class UserService {
   private final RoleRepository roleRepository;
   private final PasswordEncoder passwordEncoder;
   private final SecurityEventsCollector eventsCollector;
+  private final UserMapper userMapper;
 
   public UserService(UserRepository userRepository,
                     RoleRepository roleRepository,
                     PasswordEncoder passwordEncoder,
-                    SecurityEventsCollector eventsCollector) {
+                    SecurityEventsCollector eventsCollector,
+                    UserMapper userMapper) {
     this.userRepository = userRepository;
     this.roleRepository = roleRepository;
     this.passwordEncoder = passwordEncoder;
     this.eventsCollector = eventsCollector;
+    this.userMapper = userMapper;
   }
 
   public AuthResponse authenticate(String username, String password) {
@@ -54,24 +56,24 @@ public class UserService {
 
     eventsCollector.recordEvent("AUTHENTICATION_SUCCESS", username, "User logged in successfully");
 
-    return new AuthResponse("mock-jwt-token-" + System.currentTimeMillis(), "Bearer", toUserDto(user));
+    return new AuthResponse("mock-jwt-token-" + System.currentTimeMillis(), "Bearer", userMapper.toUserDto(user));
   }
 
   public UserDto getUserById(Long id) {
     User user = userRepository.findById(id)
         .orElseThrow(() -> new UserNotFoundException(id));
-    return toUserDto(user);
+    return userMapper.toUserDto(user);
   }
 
   public UserDto getUserByUsername(String username) {
     User user = userRepository.findByUsername(username)
         .orElseThrow(() -> new UserNotFoundException(username));
-    return toUserDto(user);
+    return userMapper.toUserDto(user);
   }
 
   public List<UserDto> getAllUsers() {
     return userRepository.findAll().stream()
-        .map(this::toUserDto)
+        .map(userMapper::toUserDto)
         .toList();
   }
 
@@ -102,7 +104,7 @@ public class UserService {
     User saved = userRepository.save(user);
     eventsCollector.recordEvent("USER_CREATED", saved.getUsername(), "New user account created");
 
-    return toUserDto(saved);
+    return userMapper.toUserDto(saved);
   }
 
   @Transactional
@@ -115,7 +117,7 @@ public class UserService {
     user.setLastName(request.lastName());
 
     User saved = userRepository.save(user);
-    return toUserDto(saved);
+    return userMapper.toUserDto(saved);
   }
 
   @Transactional
@@ -157,7 +159,7 @@ public class UserService {
     eventsCollector.recordEvent("ROLE_ASSIGNED", user.getUsername(),
         "Role " + role.getName() + " assigned to user");
 
-    return toUserDto(saved);
+    return userMapper.toUserDto(saved);
   }
 
   @Transactional
@@ -173,7 +175,7 @@ public class UserService {
     eventsCollector.recordEvent("ROLE_REMOVED", user.getUsername(),
         "Role " + role.getName() + " removed from user");
 
-    return toUserDto(saved);
+    return userMapper.toUserDto(saved);
   }
 
   @Transactional
@@ -196,22 +198,5 @@ public class UserService {
     userRepository.save(user);
 
     eventsCollector.recordEvent("USER_DISABLED", user.getUsername(), "User account disabled");
-  }
-
-  private UserDto toUserDto(User user) {
-    Set<String> roleNames = user.getRoles().stream()
-        .map(Role::getName)
-        .collect(Collectors.toSet());
-
-    return new UserDto(
-        user.getId(),
-        user.getUsername(),
-        user.getEmail(),
-        user.getFullName(),
-        user.getEnabled(),
-        roleNames,
-        user.getCreatedAt(),
-        user.getLastLoginAt()
-    );
   }
 }
